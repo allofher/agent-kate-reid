@@ -1,0 +1,19 @@
+{
+  "_comment": "Copy this file to kate.json and fill in the values for your chosen provider.",
+
+  "provider": "anthropic",
+  "model": "claude-opus-4-7",
+  "strudel_url": "http://localhost:3000",
+
+  "anthropic": {
+    "api_key": "sk-ant-..."
+  },
+
+  "openai": {
+    "api_key": "sk-..."
+  },
+
+  "ollama": {
+    "base_url": "http://localhost:11434"
+  }
+}
