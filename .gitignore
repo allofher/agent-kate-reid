@@ -1,0 +1,51 @@
+# Binaries
+/kate-reid
+/kate
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Build output
+/bin/
+/dist/
+
+# Go test artifacts
+*.test
+*.out
+coverage.html
+coverage.txt
+
+# Dependency directories (managed by go mod)
+vendor/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets.json
+config.local.yaml
+config.local.yml
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+
+# Runtime / temp
+*.log
+*.tmp
+/tmp/
