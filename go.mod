@@ -6,6 +6,7 @@ toolchain go1.24.7
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.45.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/openai/openai-go v1.12.0
 )
 

@@ -56,17 +56,13 @@ raw audio is not needed for either.
 
 ## Strudel architecture — what the server actually is
 
-This section is critical before writing any tool implementation.
-
 ### Strudel is a browser application
 
-Strudel has **no built-in HTTP REST API or standalone server process**. The REPL lives
-entirely in the browser. When the docs say "run the server," they mean a static asset
-server (Vite dev server or `pnpm preview`) serving the browser app. There is no socket
-Kate can POST code to out of the box.
+Strudel has **no built-in HTTP REST API**. The REPL lives in the browser. The
+"server" is a Vite dev server (or production static server) serving the browser app.
 
 The official repository has moved from GitHub to Codeberg:
-- New home: https://codeberg.org/uzu/strudel
+- Active repo: https://codeberg.org/uzu/strudel
 - GitHub (tidalcycles/strudel) is archived as of June 2025
 
 ### Running Strudel locally
@@ -74,123 +70,161 @@ The official repository has moved from GitHub to Codeberg:
 **Requirements:** Node.js, pnpm (not npm — the monorepo uses pnpm workspaces).
 
 ```bash
-# Clone from the active repo
 git clone https://codeberg.org/uzu/strudel
 cd strudel
-
-# Install (pnpm required — npm will not work)
 pnpm i
-
-# Development mode (hot reload, enables repl-control WebSocket)
-pnpm dev
-# → REPL available at http://localhost:3000 (default Vite port)
-
-# Production build + preview
-pnpm build
-pnpm preview
+pnpm dev          # dev mode — repl-control WebSocket starts automatically on :8081
 ```
 
-Docker alternative (wraps the production build):
+Production build for a more stable session:
 ```bash
-# From https://github.com/LofiFren/strudel-docker
-docker compose up -d
-# → REPL at http://localhost:4321
+pnpm build && pnpm preview
+# Note: repl-control is tree-shaken out of production builds.
+# For Kate, always use pnpm dev.
 ```
 
-The Docker image is ~3 GB (includes Node runtime + build toolchain). First run clones and
-builds; subsequent runs start instantly.
+Docker alternative (production build only, no repl-control):
+```bash
+# https://github.com/LofiFren/strudel-docker
+docker compose up -d   # → http://localhost:4321
+```
 
 ---
 
-### How to talk to the REPL from outside the browser
+## Communication: `@strudel/repl-control`
 
-Three approaches exist in the wild. Each has different trade-offs for Kate.
+This is the chosen approach. A Vite plugin auto-starts a WebSocket server on port
+**8081** when `pnpm dev` runs. The browser page connects as a `browser` client;
+Kate's Go harness connects as a `cli` client. The server routes control messages
+from cli → browser, and state messages from browser → cli.
 
-#### Option A — `@strudel/repl-control` (dev-mode WebSocket)
+### Why not MIDI?
 
-Strudel ships a built-in `@strudel/repl-control` package that opens a WebSocket server
-when running `pnpm dev`. CLI scripts connect to it to send code.
+MIDI makes Kate a **controller** — she can drive note pitches and CC values on a
+pre-authored Strudel template. The bridge makes her a **live coder** — she writes
+and evaluates arbitrary Strudel code. Kate's identity is the latter.
 
-**Constraint:** This is explicitly excluded from production builds. It only works with
-`pnpm dev`, not `pnpm preview` or the Docker image.
+| | MIDI | repl-control |
+|---|---|---|
+| Kate writes Strudel patterns | No | Yes |
+| Works with production builds | Yes | No (dev only) |
+| Built into Strudel | Yes | Yes (dev mode) |
+| Session state readable | No | Yes |
+| Extra software required | Virtual MIDI driver | Just `pnpm dev` |
 
-**Verdict for Kate:** Fine for local development/testing. Not viable for a stable band
-setup where others may run a production build.
+### Why not a custom WebSocket bridge?
 
-#### Option B — Express + WebSocket bridge (recommended for Kate)
-
-Run a companion Node.js server alongside Strudel. The bridge exposes HTTP and/or
-WebSocket endpoints. The Strudel page loads a small client script that connects back
-to the bridge and drives the CodeMirror editor when it receives messages.
-
-Precedent: the [param-strudels](https://github.com/Paramstr/param-strudels) project
-uses exactly this pattern — an Express server (`pnpm api`) translates requests into
-CodeMirror editor actions in the browser.
-
-**Architecture:**
-
-```
-Kate (Go) ──HTTP/WS──▶ bridge server (Node) ──WS──▶ Strudel browser page
-                                                          │
-                                                    CodeMirror
-                                                    editor DOM
-```
-
-Kate's Go `strudel.Client` points at the bridge server, not at the Strudel REPL directly.
-The bridge owns the browser session.
-
-**Verdict for Kate:** Best option. Decouples Kate from the browser, works with any
-Strudel build (dev or production), and gives the band a single stable endpoint.
-
-#### Option C — Playwright browser automation
-
-Automate the browser directly using Playwright. Access CodeMirror internals via
-`editor.__view.dispatch(...)`. No bridge server needed.
-
-Precedent: [strudel-mcp-server](https://github.com/williamzujkowski/strudel-mcp-server)
-and [strudel-server](https://github.com/micahkepe/strudel-server) both use this
-approach. The MCP server reports ~80% faster execution than keyboard simulation.
-
-**Verdict for Kate:** High fidelity but heavy dependency (headless Chromium). Good for
-single-machine setups, awkward when the band runs Strudel on separate hardware.
+More to build, nothing to gain for a local band setup.
+`repl-control` is already wired into the dev server. No bridge server needed.
 
 ---
 
-### Recommended setup for Kate
+## Protocol reference
+
+Source: `packages/repl-control/` in the Strudel monorepo.
+
+**WebSocket URL:** `ws://localhost:8081` (localhost only, hardcoded in server.mjs)
+
+### Connection sequence
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                           Band machine(s)                           │
-│                                                                     │
-│   Browser (Strudel REPL)  ◀──WS──  bridge server  ◀──HTTP/WS──  Kate│
-│         ↕ audio                    (Node, port N)   (Go harness)   │
-│   Human performers                                                  │
-└─────────────────────────────────────────────────────────────────────┘
+Kate (cli)  →  { "type": "handshake", "clientType": "cli" }
+Browser     →  { "type": "handshake", "clientType": "browser" }
+Browser     →  { "type": "state", "payload": { ...initialState } }
 ```
 
-1. The band runs Strudel in a browser (any build).
-2. The bridge server runs alongside it (or on the same machine) and injects a
-   small listener script into the Strudel page.
-3. Kate's Go harness hits the bridge via the URL set in `kate.json` (`strudel_url`).
-4. The bridge translates Kate's tool calls into CodeMirror editor actions.
+### Control message (cli → browser)
 
-**What needs to be built:**
-- A minimal bridge server (Node/Express + WebSocket) — can live in this repo under
-  `bridge/` as a companion service, or be extracted as a separate project.
-- The injected browser client script that connects to the bridge and drives CodeMirror.
-- Kate's Go tool implementations pointing at the bridge HTTP endpoints.
+```json
+{
+  "type": "control",
+  "action": "<action>",
+  "payload": { ... },
+  "requestId": "req_1"
+}
+```
+
+Actions:
+
+| Action | Required payload | Description |
+|--------|-----------------|-------------|
+| `evaluate` | `{ "code": "..." }` | Set editor code and evaluate |
+| `play` | none | Re-evaluate current code |
+| `stop` | none | Stop all playback |
+| `toggle` | none | Toggle play/stop |
+| `getState` | none | Request current state |
+
+### State message (browser → cli)
+
+```json
+{
+  "type": "state",
+  "payload": {
+    "code":      "...",
+    "playing":   true,
+    "error":     null,
+    "timestamp": 1234567890
+  },
+  "requestId": "req_1"
+}
+```
+
+A state message is sent after every command. `requestId` echoes back the sender's ID
+for request/response matching.
+
+### Error message
+
+```json
+{
+  "type": "error",
+  "error": "description",
+  "requestId": "req_1"
+}
+```
 
 ---
 
-## Open questions before implementation
+## Channel model
 
-1. **Bridge message protocol**: define the JSON schema for `eval`, `stop`, `get_state`,
-   `set_cps` messages between Kate's Go tools and the bridge server.
-2. **Channel model**: Strudel doesn't have named channels natively. We likely represent
-   them as separate `$: ` mini-notation blocks or separate `hush`-able pattern variables.
-   Need to validate which approach survives eval/hush correctly.
-3. **Session state shape**: what does `get_session_state()` actually return? The bridge
-   needs to read current editor content and return it parsed by channel/pattern.
-4. **Multi-performer state**: if other performers are on separate machines, does the
-   bridge aggregate their state, or does each machine run its own bridge with a shared
-   state store?
+The `evaluate` action **replaces the entire editor content**. There is no native
+per-channel addressing. Kate manages named channels in Go by maintaining a
+`map[channel]code` and rebuilding the combined Strudel code block on every change.
+
+Each channel is a `$:` pattern block. Strudel runs all `$:` blocks concurrently:
+
+```js
+$: s("bd sd hh*4")          // channel: drums
+$: note("c2 e2").s("bass")  // channel: bass
+```
+
+Operations:
+- **`eval_pattern(ch, code)`** → update `channels[ch]`, rebuild, evaluate all
+- **`stop_channel(ch)`** → delete `channels[ch]`, rebuild, evaluate remaining
+- **`stop_all()`** → clear map, send `stop` action
+
+`set_cps` is prepended to the combined code as a bare JS statement:
+```js
+setCps(0.5)
+$: s("bd sd")
+```
+
+---
+
+## Important: AudioContext user-gesture requirement
+
+Browsers block audio until the user clicks the page. Before Kate can produce sound,
+**someone must click once in the Strudel browser tab**. This is a hard browser
+security constraint and cannot be bypassed. It only needs to happen once per session.
+
+---
+
+## Setup summary
+
+```
+1.  git clone https://codeberg.org/uzu/strudel && cd strudel
+2.  pnpm i && pnpm dev
+3.  Open http://localhost:3000 in browser
+4.  Click anywhere in the browser tab (AudioContext activation)
+5.  Copy kate.example.json → kate.json, set provider/model/api_key
+6.  go run ./cmd/kate
+```
