@@ -1,0 +1,15 @@
+{
+  "name": "kate-reid-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "repl-control WebSocket bridge + offline Strudel page for the Kate Reid agent",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node smoke-test.mjs"
+  },
+  "dependencies": {
+    "@strudel/web": "^1.3.0",
+    "ws": "^8.18.3"
+  }
+}

@@ -1,6 +1,7 @@
-// Package strudel is a client for the Strudel repl-control WebSocket server.
-// The server runs automatically on ws://localhost:8081 when the Strudel dev
-// server is started with `pnpm dev`.
+// Package strudel is a client for the repl-control WebSocket bridge.
+// The bridge lives in this repo (bridge/) and serves both the WebSocket hub
+// and the Strudel browser page on http://localhost:8081 — start it with
+// `npm start` in bridge/.
 package strudel
 
 import (

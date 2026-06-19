@@ -1,19 +1,38 @@
 {
-  "_comment": "Copy this file to kate.json and fill in the values for your chosen provider.",
+  "_comment": "Copy to kate.json. Set 'provider' to whichever block you've filled in.",
 
   "provider": "anthropic",
-  "model": "claude-opus-4-7",
-  "strudel_url": "http://localhost:3000",
+  "_provider_options": ["anthropic", "openai", "ollama"],
+
+  "model": "claude-opus-4-8",
+  "_model_examples": {
+    "anthropic": "claude-opus-4-8",
+    "openai": "gpt-4o",
+    "ollama": "llama3"
+  },
+
+  "strudel_url": "ws://localhost:8081",
+
+  "harness": {
+    "tick_mode": "cycles",
+    "_tick_mode_options": ["cycles", "wallclock"],
+    "tick_cycles": 4,
+    "tick_seconds": 8,
+    "default_cps": 0.5
+  },
 
   "anthropic": {
+    "_comment": "https://console.anthropic.com/settings/keys",
     "api_key": "sk-ant-..."
   },
 
   "openai": {
+    "_comment": "Also works with OpenRouter: set api_key to your OR key and model to e.g. openai/gpt-4o",
     "api_key": "sk-..."
   },
 
   "ollama": {
+    "_comment": "Fully offline — no api_key needed. Run `ollama serve` first.",
     "base_url": "http://localhost:11434"
   }
 }

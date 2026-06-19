@@ -58,45 +58,48 @@ raw audio is not needed for either.
 
 ### Strudel is a browser application
 
-Strudel has **no built-in HTTP REST API**. The REPL lives in the browser. The
-"server" is a Vite dev server (or production static server) serving the browser app.
+Strudel has **no built-in HTTP REST API**. The REPL lives in the browser; the
+browser is the audio engine. Whatever serves the page is incidental.
 
 The official repository has moved from GitHub to Codeberg:
 - Active repo: https://codeberg.org/uzu/strudel
 - GitHub (tidalcycles/strudel) is archived as of June 2025
 
-### Running Strudel locally
+### The bridge (`bridge/` in this repo)
 
-**Requirements:** Node.js, pnpm (not npm — the monorepo uses pnpm workspaces).
+Kate talks to Strudel through a small bridge of our own — `bridge/server.mjs` —
+not through the Strudel monorepo. (An earlier revision of this doc described an
+`@strudel/repl-control` package inside the monorepo; that package never existed
+upstream. The protocol it described is real and unchanged — the implementation
+just lives here instead.)
+
+The bridge is one Node process on **localhost:8081** doing two jobs:
+
+1. **Static server** — serves `bridge/public/index.html`, a page that runs the
+   full Strudel REPL via `@strudel/web` (the official prebundled build,
+   npm-installed and served from `node_modules` — no CDN, no build step).
+2. **WebSocket hub** — the browser page connects as a `browser` client; Kate's
+   Go harness connects as a `cli` client. Control messages relay cli → browser;
+   state/error replies relay browser → cli, matched by `requestId`.
 
 ```bash
-git clone https://codeberg.org/uzu/strudel
-cd strudel
-pnpm i
-pnpm dev          # dev mode — repl-control WebSocket starts automatically on :8081
+cd bridge
+npm install     # once, online
+npm start       # → http://localhost:8081, open it and click once
+npm test        # relay smoke test (fake browser + fake cli)
 ```
 
-Production build for a more stable session:
-```bash
-pnpm build && pnpm preview
-# Note: repl-control is tree-shaken out of production builds.
-# For Kate, always use pnpm dev.
-```
+### Offline-first
 
-Docker alternative (production build only, no repl-control):
-```bash
-# https://github.com/LofiFren/strudel-docker
-docker compose up -d   # → http://localhost:4321
-```
+A hard project constraint: Kate must work offline or effectively offline.
 
----
-
-## Communication: `@strudel/repl-control`
-
-This is the chosen approach. A Vite plugin auto-starts a WebSocket server on port
-**8081** when `pnpm dev` runs. The browser page connects as a `browser` client;
-Kate's Go harness connects as a `cli` client. The server routes control messages
-from cli → browser, and state messages from browser → cli.
+- `npm install` is the **only** step that touches the network. After it, the
+  page, the Strudel bundle, and the WebSocket hub are all served from disk.
+- The page calls `initStrudel()` with **no prebake** — no sample packs are
+  fetched at runtime. Strudel's built-in synths work with zero network.
+- Sample packs (dirt-samples etc.) are normally fetched from GitHub at runtime;
+  for Kate they must be vendored locally and registered with `samples()`
+  pointing at local URLs. **Deferred — not set up yet.**
 
 ### Why not MIDI?
 
@@ -104,26 +107,31 @@ MIDI makes Kate a **controller** — she can drive note pitches and CC values on
 pre-authored Strudel template. The bridge makes her a **live coder** — she writes
 and evaluates arbitrary Strudel code. Kate's identity is the latter.
 
-| | MIDI | repl-control |
+| | MIDI | repl-control bridge |
 |---|---|---|
 | Kate writes Strudel patterns | No | Yes |
-| Works with production builds | Yes | No (dev only) |
-| Built into Strudel | Yes | Yes (dev mode) |
 | Session state readable | No | Yes |
-| Extra software required | Virtual MIDI driver | Just `pnpm dev` |
+| Works offline | Yes | Yes (after one `npm install`) |
+| Extra software required | Virtual MIDI driver | Node 18+ |
 
-### Why not a custom WebSocket bridge?
+### Future: live audio input
 
-More to build, nothing to gain for a local band setup.
-`repl-control` is already wired into the dev server. No bridge server needed.
+The bridge page is also the planned home for microphone capture of live
+artists: `getUserMedia` → WebAudio `AnalyserNode` → extracted features (onset,
+pitch, RMS, tempo) → sent over the same WebSocket for the harness to fold into
+the quantized queue. Raw waveform never reaches the model — only features. See
+the extension-point comment at the bottom of `bridge/public/index.html`.
 
 ---
 
 ## Protocol reference
 
-Source: `packages/repl-control/` in the Strudel monorepo.
+Source of truth: `bridge/server.mjs` (relay + error path),
+`bridge/public/index.html` (action semantics), `internal/strudel/protocol.go`
+(Go wire types). This section documents the same protocol.
 
-**WebSocket URL:** `ws://localhost:8081` (localhost only, hardcoded in server.mjs)
+**WebSocket URL:** `ws://localhost:8081` (binds 127.0.0.1 only; port override via
+`BRIDGE_PORT` env var, mirrored by `strudel_url` in `kate.json`)
 
 ### Connection sequence
 
@@ -170,7 +178,9 @@ Actions:
 ```
 
 A state message is sent after every command. `requestId` echoes back the sender's ID
-for request/response matching.
+for request/response matching. If an `evaluate` throws, the failure lands in
+`payload.error` (the reply is still `type: "state"`); `type: "error"` is reserved
+for bridge-level failures — no browser connected, unknown action.
 
 ### Error message
 
@@ -221,10 +231,10 @@ security constraint and cannot be bypassed. It only needs to happen once per ses
 ## Setup summary
 
 ```
-1.  git clone https://codeberg.org/uzu/strudel && cd strudel
-2.  pnpm i && pnpm dev
-3.  Open http://localhost:3000 in browser
-4.  Click anywhere in the browser tab (AudioContext activation)
+1.  cd bridge && npm install        # once, the only online step
+2.  npm start                       # bridge on http://localhost:8081
+3.  Open http://localhost:8081 in a browser
+4.  Click anywhere in the tab (AudioContext activation)
 5.  Copy kate.example.json → kate.json, set provider/model/api_key
 6.  go run ./cmd/kate
 ```

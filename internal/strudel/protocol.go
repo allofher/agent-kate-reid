@@ -1,7 +1,8 @@
 package strudel
 
 // Wire types for the repl-control WebSocket protocol.
-// Source: packages/repl-control/protocol.mjs in the Strudel monorepo.
+// The server side lives in this repo: bridge/server.mjs (relay hub) and
+// bridge/public/index.html (browser REPL). Spec: docs/tools.md.
 
 const (
 	msgHandshake = "handshake"

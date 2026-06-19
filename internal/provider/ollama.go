@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/openai/openai-go"
@@ -31,16 +30,6 @@ func NewOllama(baseURL, model string) *OllamaProvider {
 
 func (p *OllamaProvider) Model() string { return p.model }
 
-func (p *OllamaProvider) Complete(ctx context.Context, messages []Message) (string, error) {
-	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model:    p.model,
-		Messages: buildOpenAIMessages(messages),
-	})
-	if err != nil {
-		return "", fmt.Errorf("ollama: %w", err)
-	}
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("ollama: empty response")
-	}
-	return resp.Choices[0].Message.Content, nil
+func (p *OllamaProvider) Complete(ctx context.Context, messages []Message, tools []ToolDef) (Response, error) {
+	return completeChat(ctx, p.client, p.model, "ollama", messages, tools)
 }

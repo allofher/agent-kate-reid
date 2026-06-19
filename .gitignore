@@ -34,6 +34,10 @@ secrets.json
 config.local.yaml
 config.local.yml
 
+# UV venv for vLLM
+.venv/
+pyproject.toml
+
 # Kate config (contains API keys)
 kate.json
 
